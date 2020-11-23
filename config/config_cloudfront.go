@@ -36,6 +36,7 @@ func LoadCloudFront(cloudfronts *CloudFronts, env *string) error {
 	defer f.Close()
 	decoder := yaml.NewDecoder(f)
 
+	//Reject invalid or unknow fields
 	decoder.KnownFields(false)
 
 	err = decoder.Decode(cloudfronts)

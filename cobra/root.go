@@ -20,6 +20,7 @@ var (
 )
 
 type (
+	//Command Struct that bind all commands
 	Command struct {
 		cobra.Command
 
@@ -30,6 +31,7 @@ type (
 		SelectedServices    []string
 		Services            config.Services
 		Repositories        config.Repositories
+		ChildTasks          config.ChildTasks
 		CloudFronts         config.CloudFronts
 		AWSSession          *aws.AWSSession
 		DockerHubAuthConfig *types.AuthConfig
@@ -38,6 +40,8 @@ type (
 	}
 )
 
+//CheckEnv populate the env used
+//to determine the file who describe an Environment
 func (cmd *Command) CheckEnv() {
 	if strings.EqualFold("", cmd.GTenv) {
 		cmd.GTenv = viper.GetString("default_env")
@@ -50,6 +54,7 @@ func (cmd *Command) CheckEnv() {
 
 }
 
+//GetAWSSession Instanciate a Global reusable AWSSession
 func (cmd *Command) GetAWSSession() {
 	var err error
 	cmd.AWSSession, err = aws.NewAWSSession(&cmd.Services.ECSRegion, &cmd.AWSProfile)
@@ -58,6 +63,8 @@ func (cmd *Command) GetAWSSession() {
 	}
 }
 
+//NewCommand Return Pointer to the Command struct{}
+//and bind other command.
 func NewCommand(version string) *Command {
 	var cmd = &Command{
 		Command: cobra.Command{
@@ -86,7 +93,8 @@ func NewCommand(version string) *Command {
 			viper.SetConfigName(".gtd")
 
 			viper.SetEnvPrefix("gtd")
-			viper.AutomaticEnv()
+			viper.AutomaticEnv() // read in environment variables that match
+			// if a config file is found, read it in.
 			if err := viper.ReadInConfig(); err == nil {
 				fmt.Println("Using config file", viper.ConfigFileUsed())
 			}
@@ -108,6 +116,8 @@ func NewCommand(version string) *Command {
 			} else {
 				dockerHubPassword = viper.GetString("docker_password")
 			}
+
+			// fmt.Println(Decrypt([]byte(viper.GetString("mysecret")), []byte(sharedSecret)))
 
 			if !strings.EqualFold("", dockerHubLogin) && !strings.EqualFold("", dockerHubPassword) {
 				authConfig := &types.AuthConfig{
@@ -131,6 +141,7 @@ func NewCommand(version string) *Command {
 
 	cmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version information")
 	cmd.Flags().StringVar(&cmd.AWSProfile, "profile", "", "Profile AWS to use [--profile chaudron]")
+	// cmd.Flags().StringVar(&cfgFile, "configFile", "", "use global config file '(default to $HOME/.gtd.yaml)'")
 	if cmd.AWSProfile == "" {
 		cmd.AWSProfile = awsProfile
 	}

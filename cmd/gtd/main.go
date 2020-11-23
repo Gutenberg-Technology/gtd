@@ -7,6 +7,7 @@ import (
 	gtdCobra "github.com/gpkfr/goretdep/cobra"
 )
 
+// gtd's Version
 var (
 	Version string
 )

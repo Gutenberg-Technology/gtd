@@ -52,13 +52,14 @@ func deployServices(cmd *Command) {
 	var currentImage string
 	var newServiceTaskDefinition string = "Unmodified"
 
+	// just do a deploy without image replacement
 	if strings.EqualFold(newContainerImage, newContainerTag) && !forceDeploy {
 		fmt.Println("(💣) Not sure you want to do this. Confirm with `--force`")
 		fmt.Println("Quitting Now, bye (🐷)")
 		os.Exit(0)
 	}
 
-	cmd.AWSSession.GetServices(&cmd.Services, &cmd.Repositories, cmd.GTenv, true, cmd.SelectedServices...)
+	cmd.AWSSession.GetServices(&cmd.Services, &cmd.Repositories, &cmd.ChildTasks, cmd.GTenv, true, cmd.SelectedServices...)
 
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
@@ -67,6 +68,8 @@ func deployServices(cmd *Command) {
 	for _, aService := range cmd.Services.Services {
 		if aService.TaskDefinition != nil {
 
+			//very Specific to Deploy
+			// Check if we use the current image definition
 			if newContainerImage == "" {
 				newContainerImage = aService.Registry
 				if newContainerTag == "" && forceDeploy {
@@ -79,17 +82,21 @@ func deployServices(cmd *Command) {
 					log.Fatal(fmt.Errorf("Tags already defined in %s\n", newContainerImage))
 				}
 				if !strings.Contains(newContainerTag, ":") {
+					//Add missing colon
 					newContainerTag = fmt.Sprintf(":%s", newContainerTag)
 				}
 			}
 
+			//update tasks
 			if forceDeploy || !strings.EqualFold(*aService.TaskDefinition.ContainerDefinitions[0].Image, fmt.Sprintf("%s%s", newContainerImage, newContainerTag)) {
 				currentImage = *aService.TaskDefinition.ContainerDefinitions[0].Image
 				var isEnvFile bool = false
+				//Need to read the environment File
 
 				input := &ecs.RegisterTaskDefinitionInput{
 					ContainerDefinitions: aService.TaskDefinition.ContainerDefinitions,
 					Family:               aService.TaskDefinition.Family,
+					// TaskRoleArn:          aService.TaskDefinition.TaskRoleArn,
 				}
 
 				if aService.TaskDefinition.TaskRoleArn != nil {
@@ -105,6 +112,7 @@ func deployServices(cmd *Command) {
 				}
 
 				if aService.TaskDefinition.ExecutionRoleArn != nil {
+					// si les valeurs sont différrente / Mis à jour à partir du fichier de config
 					if !strings.EqualFold(aService.TaskExecutionRoleArn, *aService.TaskDefinition.ExecutionRoleArn) {
 						input.SetExecutionRoleArn(aService.TaskExecutionRoleArn)
 						isEnvFile = true
@@ -155,9 +163,9 @@ func deployServices(cmd *Command) {
 
 				if len(aService.Labels) > 0 {
 					for _, label := range aService.Labels {
-						labels[label.Key] = &label.Value
+						value := label.Value
+						labels[label.Key] = &value
 					}
-
 				}
 
 				if eq := reflect.DeepEqual(input.ContainerDefinitions[0].DockerLabels, labels); !eq {
@@ -177,6 +185,7 @@ func deployServices(cmd *Command) {
 					newServiceTaskDefinition = fmt.Sprintf("%s:%d", *aService.TaskDefinition.Family, *aService.TaskDefinition.Revision)
 				}
 
+				//Update Service
 				_, err := cmd.AWSSession.UpdateAWSService(cmd.AWSSession.Svc, &aService.Name, &cmd.Services.ECSCluster, &newServiceTaskDefinition, forceDeploy)
 				if err != nil {
 					log.Println(fmt.Errorf("error while updating service: %s\n %s", aService.Name, err.Error()))
@@ -191,10 +200,17 @@ func deployServices(cmd *Command) {
 					aService.Status,
 					aService.RunningCount})
 
+				//Ok we have updated service
+				//But do we need to publish a ECR, or push Image with another name ?
 				if !strings.EqualFold("", aService.UpdateECR) {
 					publishRegistry(cmd, t, &aService)
 				}
+
+				if aService.UpdateChildTask {
+					updateChildTasks(cmd, t, &aService)
+				}
 			} else {
+				// Skipping Update since Current and new Image are identical
 				t.AppendRow([]interface{}{
 					aService.Name,
 					fmt.Sprintf("%s:%d", *aService.TaskDefinition.Family, *aService.TaskDefinition.Revision),
@@ -207,6 +223,7 @@ func deployServices(cmd *Command) {
 		}
 	}
 
+	// t.SetAllowedColumnLengths([]int{10, -1, 10, 10, 10, 10})
 	switch cmd.TableStyle {
 	case "light":
 		t.SetStyle(table.StyleLight)
@@ -216,16 +233,65 @@ func deployServices(cmd *Command) {
 	if t.Length() > cmd.ShowTableIndexAbove {
 		t.SetAutoIndex(true)
 	}
+	//t.SetAlign([]text.Align{text.AlignLeft, text.AlignCenter, text.AlignCenter, text.AlignCenter, text.AlignCenter, text.AlignCenter, text.AlignCenter})
 	t.SetColumnConfigs([]table.ColumnConfig{
 		{Number: 1, Align: text.AlignLeft},
 		{Number: 2, Align: text.AlignCenter},
 		{Number: 3, Align: text.AlignCenter},
-		{Number: 4, Align: text.AlignCenter},
-		{Number: 5, Align: text.AlignCenter},
+		{Number: 4, Align: text.AlignCenter, WidthMax: 30},
+		{Number: 5, Align: text.AlignCenter, WidthMax: 30},
 		{Number: 6, Align: text.AlignCenter},
 		{Number: 7, Align: text.AlignCenter},
 	})
 	t.Render()
+}
+
+func updateChildTasks(cmd *Command, tab interface{}, aService *config.Service) {
+	var statusChildTask, currentImage string
+	goretPic := "🐺"
+
+	for _, t := range cmd.ChildTasks.ChildTasks {
+
+		if strings.EqualFold(t.ParentService, aService.Name) && !t.IgnoreDeploy {
+			taskDefinition, err := cmd.AWSSession.GetCurrentTaskDefinition(cmd.AWSSession.Svc, t.Name)
+			if err != nil {
+				log.Fatal("error while getting child task definition")
+			}
+
+			currentImage = *taskDefinition.TaskDefinition.ContainerDefinitions[0].Image
+			taskDefinition.TaskDefinition.ContainerDefinitions[0].Image = aws.String(fmt.Sprintf("%s%s", newContainerImage, newContainerTag))
+
+			_, err = cmd.AWSSession.Svc.RegisterTaskDefinition(&ecs.RegisterTaskDefinitionInput{
+				Family:                  taskDefinition.TaskDefinition.Family,
+				ContainerDefinitions:    taskDefinition.TaskDefinition.ContainerDefinitions,
+				TaskRoleArn:             taskDefinition.TaskDefinition.TaskRoleArn,
+				ExecutionRoleArn:        taskDefinition.TaskDefinition.ExecutionRoleArn,
+				Memory:                  taskDefinition.TaskDefinition.Memory,
+				NetworkMode:             taskDefinition.TaskDefinition.NetworkMode,
+				RequiresCompatibilities: taskDefinition.TaskDefinition.RequiresCompatibilities,
+				Cpu:                     taskDefinition.TaskDefinition.Cpu,
+				Volumes:                 taskDefinition.TaskDefinition.Volumes,
+			})
+
+			if err != nil {
+				statusChildTask = fmt.Sprintf("Error on %s: %v", t.Name, err)
+			} else {
+				statusChildTask = fmt.Sprintf("%s for %s Updated", t.Name, t.ParentService)
+				goretPic = "🐷"
+			}
+		} else {
+			statusChildTask = "Ignored"
+			goretPic = "💤"
+		}
+		tab.(table.Writer).AppendRow([]interface{}{
+			fmt.Sprintf(" ↳ %s", t.Name),
+			"-",
+			statusChildTask,
+			currentImage,
+			fmt.Sprintf("same as %s", aService.Name),
+			goretPic,
+			"-"})
+	}
 }
 
 func publishRegistry(cmd *Command, t interface{}, aService *config.Service) {
@@ -242,6 +308,7 @@ func publishRegistry(cmd *Command, t interface{}, aService *config.Service) {
 			if gtddocker.PullFromPrivateRegistry(cmd.DockerHubAuthConfig, *aService.TaskDefinition.ContainerDefinitions[0].Image) {
 				RepositoryUri := cmd.AWSSession.DescribeRepository(r.RepositoryName)
 
+				//if ok := len(strings.Split(r.RepositoryName, ":")); ok > 1 {
 				repositoryParts := strings.SplitN(r.RepositoryName, ":", 2)
 				if len(repositoryParts) == 2 {
 					RepositoryNameOnly = repositoryParts[0]
@@ -250,6 +317,8 @@ func publishRegistry(cmd *Command, t interface{}, aService *config.Service) {
 					RepositoryNameOnly = repositoryParts[0]
 				}
 
+				//RepositoryTag = fmt.Sprintf(":%s", strings.Split(r.RepositoryName, ":")[1])
+				//}
 				if !strings.EqualFold("", RepositoryTag) {
 					FullURISeparator = ":"
 				} else {
@@ -262,11 +331,11 @@ func publishRegistry(cmd *Command, t interface{}, aService *config.Service) {
 				gtddocker.TagLocalDockerImageFrom(*aService.TaskDefinition.ContainerDefinitions[0].Image, fullURI)
 				statusChildRegistry = "Tagged Locally (Only)"
 
+				//then push to ecr
 				if cmd.AWSSession.PushToECR(RepositoryNameOnly, RepositoryTag, fullURI) {
 					statusChildRegistry = fmt.Sprintf("Pushed on %s", fullURI)
 					goretPic = "🐷"
 				}
-
 			}
 		} else {
 			statusChildRegistry = "Ignored"

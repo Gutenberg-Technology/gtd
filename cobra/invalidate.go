@@ -39,8 +39,10 @@ func invalidate(cmd *Command) {
 	t.AppendHeader(table.Row{"Cloudfront ID", "Pattern", "Associated Service", "invalidate ID", "Status"})
 
 	if len(cmd.SelectedServices) <= 0 {
+		// Process all (unfiltered) CF invalidations description (even without service associated)
 		for _, cf := range cmd.CloudFronts.CloudFronts {
 			if !strings.EqualFold("", cf.CloudfrontID) && !cf.IgnoreDeploy {
+				// fmt.Printf("CF ID: %s Pattern: %s associated Service: %s Ignore: %t\n", cf.CloudfrontID, cf.CloudFrontPattern, cf.AssociatedService, cf.IgnoreDeploy)
 				resp, err := cmd.AWSSession.CreateInvalidationRequest(cf.CloudfrontID, cf.CloudFrontPattern)
 				if err != nil {
 					log.Fatalf("Invalidate Failed. %v", err)
@@ -55,6 +57,7 @@ func invalidate(cmd *Command) {
 			}
 		}
 	} else {
+		//Process Filtered CF invalidations (With service associated)
 		for _, cf := range cmd.CloudFronts.CloudFronts {
 			for _, s := range cmd.SelectedServices {
 				if strings.EqualFold(s, cf.AssociatedService) && !strings.EqualFold("", cf.CloudfrontID) && !cf.IgnoreDeploy {
@@ -83,5 +86,7 @@ func invalidate(cmd *Command) {
 	if t.Length() > cmd.ShowTableIndexAbove {
 		t.SetAutoIndex(true)
 	}
+
 	t.Render()
+
 }

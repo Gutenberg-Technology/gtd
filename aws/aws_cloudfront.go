@@ -76,6 +76,8 @@ func (awsSession *AWSSession) GetInvalidationRequest(cfID, invalidationID string
 				fmt.Println(aerr.Error())
 			}
 		} else {
+			// Print the error, cast err to awserr.Error to get the Code and
+			// Message from an error.
 			fmt.Println(err.Error())
 		}
 	}

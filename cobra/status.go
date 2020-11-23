@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+//NewStatusCommand Return a Command struct Pointer.
 func NewStatusCommand(cmd *Command) {
 
 	cobraCmd := &cobra.Command{
@@ -30,7 +31,7 @@ func NewStatusCommand(cmd *Command) {
 
 func status(cmd *Command) {
 
-	cmd.AWSSession.GetServices(&cmd.Services, &cmd.Repositories, cmd.GTenv, false, cmd.SelectedServices...)
+	cmd.AWSSession.GetServices(&cmd.Services, &cmd.Repositories, &cmd.ChildTasks, cmd.GTenv, false, cmd.SelectedServices...)
 
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
@@ -48,6 +49,7 @@ func status(cmd *Command) {
 		}
 	}
 
+	// t.SetAllowedColumnLengths([]int{10, -1, 10, 10, 10, 10})
 	switch cmd.TableStyle {
 	case "light":
 		t.SetStyle(table.StyleLight)
@@ -57,5 +59,7 @@ func status(cmd *Command) {
 	if t.Length() > cmd.ShowTableIndexAbove {
 		t.SetAutoIndex(true)
 	}
+
 	t.Render()
+
 }

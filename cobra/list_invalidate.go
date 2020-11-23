@@ -39,8 +39,10 @@ func listinvalidation(cmd *Command) {
 	t.AppendHeader(table.Row{"Cloudfront ID", "Pattern", "Associated Service", "invalidate ID", "Date", "Status"})
 
 	if len(cmd.SelectedServices) <= 0 {
+		// Process all (unfiltered) CF invalidations description (even without service associated)
 		for _, cf := range cmd.CloudFronts.CloudFronts {
 			if !strings.EqualFold("", cf.CloudfrontID) && !cf.IgnoreDeploy {
+				// fmt.Printf("CF ID: %s Pattern: %s associated Service: %s Ignore: %t\n", cf.CloudfrontID, cf.CloudFrontPattern, cf.AssociatedService, cf.IgnoreDeploy)
 				resp, err := cmd.AWSSession.ViewListInvalidations(cf.CloudfrontID)
 				if err != nil {
 					log.Fatalf("List Invalidation Failed. %v", err)
@@ -56,6 +58,7 @@ func listinvalidation(cmd *Command) {
 					t.AppendRow([]interface{}{
 						cf.CloudfrontID,
 						*invalidation.Invalidation.InvalidationBatch.Paths.Items[0],
+						//cf.CloudFrontPattern,
 						cf.AssociatedService,
 						*item.Id,
 						item.CreateTime,
@@ -66,6 +69,7 @@ func listinvalidation(cmd *Command) {
 			}
 		}
 	} else {
+		//Process Filtered CF invalidations (With service associated)
 		for _, cf := range cmd.CloudFronts.CloudFronts {
 			for _, s := range cmd.SelectedServices {
 				if strings.EqualFold(s, cf.AssociatedService) && !strings.EqualFold("", cf.CloudfrontID) && !cf.IgnoreDeploy {
@@ -81,11 +85,13 @@ func listinvalidation(cmd *Command) {
 						t.AppendRow([]interface{}{
 							cf.CloudfrontID,
 							*invalidation.Invalidation.InvalidationBatch.Paths.Items[0],
+							// cf.CloudFrontPattern,
 							cf.AssociatedService,
 							*item.Id,
 							item.CreateTime,
 							*item.Status,
 						})
+
 					}
 				}
 			}
@@ -101,5 +107,7 @@ func listinvalidation(cmd *Command) {
 	if t.Length() > cmd.ShowTableIndexAbove {
 		t.SetAutoIndex(true)
 	}
+
 	t.Render()
+
 }

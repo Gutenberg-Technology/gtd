@@ -111,6 +111,7 @@ func (awsSession *AWSSession) PushToECR(repositoryName, repositoryTag, fullURI s
 			}
 			defer out.Close()
 
+			// add progressBar here
 			termFd, isTerm := term.GetFdInfo(os.Stdout)
 			if err := jsonmessage.DisplayJSONMessagesStream(out, os.Stdout, termFd, isTerm, nil); err != nil {
 				return false

@@ -44,15 +44,21 @@ func (awsSession *AWSSession) GetServiceTask(services *config.Services, svc *ecs
 	serviceArray := make([]string, 0, 1)
 
 	if serviceCount := len(serviceName); serviceCount <= 0 {
+		//serviceName is empty
+		// taking ALL service from [env].yaml
+		// if not a task description
 		for _, s := range services.Services {
 			if !isDeploy || !s.IgnoreDeploy {
 				serviceArray = append(serviceArray, s.Name)
 			}
 		}
 	} else {
+		// serviceName is not empty
+		// populate only selected whoa are not Task
 		for _, name := range serviceName {
 			for _, s := range services.Services {
 				if (!isDeploy || !s.IgnoreDeploy) && strings.EqualFold(name, s.Name) {
+					// if strings.EqualFold(name, s.Name) {
 					serviceArray = append(serviceArray, s.Name)
 				}
 			}
@@ -60,6 +66,8 @@ func (awsSession *AWSSession) GetServiceTask(services *config.Services, svc *ecs
 	}
 
 	serviceArrayCount := len(serviceArray)
+	// if no services are finally enabled or don't exist
+	// Return an Error
 	if serviceArrayCount <= 0 {
 		err := fmt.Errorf("Missing services")
 		return err
@@ -68,6 +76,9 @@ func (awsSession *AWSSession) GetServiceTask(services *config.Services, svc *ecs
 	var input *ecs.DescribeServicesInput
 
 	if serviceArrayCount > 10 {
+		//  Case Service Array count > 10
+		// in this case, since Aws does not accept more than ten services
+		// split the call by ten
 		i := 0
 		n := 10
 

@@ -22,6 +22,7 @@ type (
 		Provider             string  `yaml:"provider,omitempty"`
 		IgnoreDeploy         bool    `yaml:"ignore,omitempty"`
 		UpdateECR            string  `yaml:"update_ecr,omitempty"`
+		UpdateChildTask      bool    `yaml:"update_child_task,omitempty"`
 		Labels               []Label `yaml:"labels,omitempty"`
 		TaskExecutionRoleArn string  `yaml:"task_execution_role_arn,omitempty"`
 		TaskRoleArn          string  `yaml:"task_role_arn,omitempty"`
@@ -50,9 +51,19 @@ type (
 	Repositories struct {
 		Repositories []Repository
 	}
+
+	ChildTask struct {
+		Name          string `yaml:"name"`
+		ParentService string `yaml:"parent"`
+		IgnoreDeploy  bool   `yaml:"ignore,omitempty"`
+	}
+
+	ChildTasks struct {
+		ChildTasks []ChildTask
+	}
 )
 
-func LoadService(services *Services, repositories *Repositories, env *string) error {
+func LoadService(services *Services, repositories *Repositories, childtasks *ChildTasks, env *string) error {
 	var configFilePath string
 
 	configFilePath = fmt.Sprintf("gtd/%s.yaml", *env)
@@ -65,8 +76,10 @@ func LoadService(services *Services, repositories *Repositories, env *string) er
 		log.Fatal(err)
 	}
 	defer f.Close()
+
 	decoder := yaml.NewDecoder(f)
 
+	//Reject invalid or unknow fields
 	decoder.KnownFields(false)
 
 	err = decoder.Decode(services)
@@ -77,6 +90,13 @@ func LoadService(services *Services, repositories *Repositories, env *string) er
 	_, _ = f.Seek(0, io.SeekStart)
 	decoder = yaml.NewDecoder(f)
 	err = decoder.Decode(repositories)
+	if err != nil {
+		log.Fatal(fmt.Errorf("service:  could not decode config file %s: %v", configFilePath, err))
+	}
+
+	_, _ = f.Seek(0, io.SeekStart)
+	decoder = yaml.NewDecoder(f)
+	err = decoder.Decode(childtasks)
 	if err != nil {
 		log.Fatal(fmt.Errorf("service:  could not decode config file %s: %v", configFilePath, err))
 	}

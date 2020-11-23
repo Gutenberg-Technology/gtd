@@ -33,20 +33,22 @@ func (awsSession *AWSSession) UpdateAWSService(svc *ecs.ECS, serviceName, servic
 	return result.(*ecs.UpdateServiceOutput), err
 }
 
-func (awsSession *AWSSession) GetServices(services *config.Services, repos *config.Repositories, env string, isDeploy bool, selectedServices ...string) {
-	if err := config.LoadService(services, repos, &env); err != nil {
+func (awsSession *AWSSession) GetServices(services *config.Services, repos *config.Repositories, child *config.ChildTasks, env string, isDeploy bool, selectedServices ...string) {
+	if err := config.LoadService(services, repos, child, &env); err != nil {
 		log.Fatal(err)
 	}
 
 	awsSession.GetSVC()
 
 	if len(selectedServices) <= 0 {
+		//No filter
 		err := awsSession.GetServiceTask(services, awsSession.Svc, isDeploy)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 	} else {
+		//filter on Services Selected
 		err := awsSession.GetServiceTask(services, awsSession.Svc, isDeploy, selectedServices...)
 		if err != nil {
 			log.Fatal(err)
