@@ -152,8 +152,10 @@ func deployServices(cmd *Command) {
 						}
 					}
 					input.ContainerDefinitions[0].SetEnvironment(tasksEnv)
-					input.ContainerDefinitions[0].SetSecrets(secretsEnv)
+					aService.TasksEnv = tasksEnv
 
+					input.ContainerDefinitions[0].SetSecrets(secretsEnv)
+					aService.SecretsEnv = secretsEnv
 					if len(secretsEnv) > 0 {
 						input.SetExecutionRoleArn(aService.TaskExecutionRoleArn)
 					}
@@ -247,7 +249,7 @@ func deployServices(cmd *Command) {
 }
 
 func updateChildTasks(cmd *Command, tab interface{}, aService *config.Service) {
-	var statusChildTask, currentImage string
+	var statusChildTask, currentImage, currentTaskRevision string
 	goretPic := "🐺"
 
 	for _, t := range cmd.ChildTasks.ChildTasks {
@@ -259,9 +261,10 @@ func updateChildTasks(cmd *Command, tab interface{}, aService *config.Service) {
 			}
 
 			currentImage = *taskDefinition.TaskDefinition.ContainerDefinitions[0].Image
+			currentTaskRevision = fmt.Sprintf("%s:%d", *taskDefinition.TaskDefinition.Family, *taskDefinition.TaskDefinition.Revision)
 			taskDefinition.TaskDefinition.ContainerDefinitions[0].Image = aws.String(fmt.Sprintf("%s%s", newContainerImage, newContainerTag))
 
-			_, err = cmd.AWSSession.Svc.RegisterTaskDefinition(&ecs.RegisterTaskDefinitionInput{
+			input := &ecs.RegisterTaskDefinitionInput{
 				Family:                  taskDefinition.TaskDefinition.Family,
 				ContainerDefinitions:    taskDefinition.TaskDefinition.ContainerDefinitions,
 				TaskRoleArn:             taskDefinition.TaskDefinition.TaskRoleArn,
@@ -271,12 +274,15 @@ func updateChildTasks(cmd *Command, tab interface{}, aService *config.Service) {
 				RequiresCompatibilities: taskDefinition.TaskDefinition.RequiresCompatibilities,
 				Cpu:                     taskDefinition.TaskDefinition.Cpu,
 				Volumes:                 taskDefinition.TaskDefinition.Volumes,
-			})
+			}
+			input.ContainerDefinitions[0].SetEnvironment(aService.TasksEnv)
+			input.ContainerDefinitions[0].SetSecrets(aService.SecretsEnv)
 
+			newChildTaskDefinition, err := cmd.AWSSession.Svc.RegisterTaskDefinition(input)
 			if err != nil {
 				statusChildTask = fmt.Sprintf("Error on %s: %v", t.Name, err)
 			} else {
-				statusChildTask = fmt.Sprintf("%s for %s Updated", t.Name, t.ParentService)
+				statusChildTask = fmt.Sprintf("%s:%d", *newChildTaskDefinition.TaskDefinition.Family, *newChildTaskDefinition.TaskDefinition.Revision)
 				goretPic = "🐷"
 			}
 		} else {
@@ -285,7 +291,7 @@ func updateChildTasks(cmd *Command, tab interface{}, aService *config.Service) {
 		}
 		tab.(table.Writer).AppendRow([]interface{}{
 			fmt.Sprintf(" ↳ %s", t.Name),
-			"-",
+			currentTaskRevision,
 			statusChildTask,
 			currentImage,
 			fmt.Sprintf("same as %s", aService.Name),
